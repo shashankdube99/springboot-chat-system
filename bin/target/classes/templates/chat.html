@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        .header {
+            background-color: #075e54;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #ece5dd;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 70px;
+        }
+        .message {
+            margin: 8px 0;
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .message.sent {
+            background-color: #dcf8c6;
+            margin-left: auto;
+            text-align: right;
+        }
+        .message.received {
+            background-color: #ffffff;
+            margin-right: auto;
+        }
+        .message .sender {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .message .timestamp {
+            font-size: 0.8em;
+            color: #888;
+            margin-left: 5px;
+        }
+        .input-area {
+            display: flex;
+            padding: 10px;
+            background-color: #fff;
+            border-top: 1px solid #ddd;
+            flex-shrink: 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            max-width: 800px;
+            margin: 0 auto;
+            box-sizing: border-box;
+            align-items: center; /* Vertically center items */
+        }
+        #username {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100px;
+            box-sizing: border-box;
+        }
+        #message {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            margin-right: 10px;
+            min-width: 0; /* Allow shrinking */
+            box-sizing: border-box;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #25d366;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            flex-shrink: 0; /* Prevent button from shrinking */
+        }
+        button:hover {
+            background-color: #20b858;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 600px) {
+            .chat-container {
+                max-width: 100%;
+            }
+            .header {
+                font-size: 16px;
+                padding: 8px;
+            }
+            #messages {
+                padding: 5px;
+                padding-bottom: 60px;
+            }
+            .message {
+                max-width: 85%;
+                font-size: 14px;
+            }
+            .message .timestamp {
+                font-size: 0.7em;
+            }
+            .input-area {
+                padding: 5px;
+                padding-right: 5px; /* Match left padding */
+                width: 100%; /* Full width on mobile */
+                max-width: 100%; /* Override desktop max-width */
+                left: 0; /* Ensure full coverage */
+                right: 0;
+            }
+            #username {
+                width: 70px; /* Smaller but still usable */
+                padding: 6px;
+                margin-right: 5px;
+                font-size: 14px;
+            }
+            #message {
+                padding: 6px;
+                margin-right: 5px;
+                font-size: 14px;
+            }
+            button {
+                padding: 6px 12px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">Chat Room</div>
+        <div id="messages"></div>
+        <div class="input-area">
+            <input id="username" type="text" placeholder="Your name" onchange="setUsername()"/>
+            <input id="message" type="text" placeholder="Type a message" onkeypress="if(event.key === 'Enter') sendMessage()"/>
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        var socket = new SockJS('/chat');
+        var stompClient = Stomp.over(socket);
+        var username = 'user'; // Default
+
+        console.log('Connecting to WebSocket...');
+        stompClient.connect({}, function(frame) {
+            console.log('Connected: ' + frame);
+            console.log('Subscribing to /topic/messages...');
+            stompClient.subscribe('/topic/messages', function(message) {
+                console.log('Received:', message);
+                var msg = JSON.parse(message.body);
+                var isSent = msg.sender === username;
+                var messageDiv = document.createElement('div');
+                messageDiv.className = 'message ' + (isSent ? 'sent' : 'received');
+                messageDiv.innerHTML = 
+                    '<span class="sender">' + msg.sender + ':</span> ' + 
+                    msg.content + 
+                    '<span class="timestamp">' + new Date(msg.timestamp).toLocaleTimeString() + '</span>';
+                document.getElementById('messages').appendChild(messageDiv);
+                document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+            });
+        }, function(error) {
+            console.error('Connection error:', error);
+        });
+
+        function setUsername() {
+            username = document.getElementById('username').value || 'user';
+            console.log('Username set to:', username);
+        }
+
+        function sendMessage() {
+            var msg = document.getElementById('message').value;
+            if (!msg) return; // Avoid empty messages
+            console.log('Sending:', msg);
+            stompClient.send('/app/sendMessage', {}, JSON.stringify({
+                'sender': username,
+                'content': msg,
+                'timestamp': new Date().toISOString()
+            }));
+            document.getElementById('message').value = '';
+        }
+    </script>
+</body>
+</html>
